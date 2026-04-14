@@ -1,0 +1,18 @@
+#---------------------------------------------------------------------------------------------------
+# System Programming                         I/O Lab                                      Spring 2026
+#
+# demo directory tree
+#
+f ./demo/one 1 0
+f ./demo/two 2 0
+f ./demo/subdir1/thisisanextremelyveryverylongfilenameforsuchasimplisticfile 1000 0
+f ./demo/subdir1/simplefile 256 0
+f ./demo/subdir1/sparsefile 4096 4096
+f ./demo/subdir2/textfile1.txt 1024 0
+f ./demo/subdir2/textfile2.txt 2048 0
+l ./demo/subdir2/symboliclink ./demo/two
+l ./demo/subdir2/brokenlink ./demo/three
+f ./demo/subdir3/code1.c 200 0
+f ./demo/subdir3/code2.c 300 0
+p ./demo/subdir3/pipe
+s ./demo/subdir3/socket

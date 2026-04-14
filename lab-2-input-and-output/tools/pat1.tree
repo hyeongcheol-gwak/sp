@@ -1,0 +1,12 @@
+#---------------------------------------------------------------------------------------------------
+# System Programming                         I/O Lab                                      Spring 2026
+#
+# pattern filtering test directory tree 1
+# example 1-1 command: dirtree -f 'a?c' pat1
+# example 1-2 command: dirtree -f 'z*z' pat1
+#
+f ./pat1/abc 1 0
+f ./pat1/axc 1 0
+f ./pat1/zxc 1 0
+f ./pat1/zzz 1 0
+f ./pat1/subdir1/aXc 1 0

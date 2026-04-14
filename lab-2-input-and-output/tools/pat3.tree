@@ -1,0 +1,21 @@
+#---------------------------------------------------------------------------------------------------
+# System Programming                         I/O Lab                                      Spring 2026
+#
+# pattern filtering test directory tree 3
+# example command 3: dirtree -f 'a(b?d)*ef' pat3
+#
+f ./pat3/ef 1 0
+f ./pat3/g 1 0
+f ./pat3/alpha 1 0
+
+# Files that match a(b?d)*ef
+f ./pat3/aef 1 0
+f ./pat3/abxdef 1 0
+f ./pat3/abxdbydef 1 0
+
+# non-matching dir with at least one matching descendant (placeholder expected)
+f ./pat3/A/hold/aef 1 0
+f ./pat3/A/hold/ef 1 0
+
+# non-matching dir with NO matching descendants (should be entirely omitted)
+f ./pat3/B/none/here 1 0

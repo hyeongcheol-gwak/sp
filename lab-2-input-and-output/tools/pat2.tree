@@ -1,0 +1,18 @@
+#---------------------------------------------------------------------------------------------------
+# System Programming                         I/O Lab                                      Spring 2026
+#
+# pattern filtering test directory tree 2
+# example 2-1 command: dirtree -f '(ab)*c' pat2
+# example 2-2 command: dirtree -f 'b(ab)*c' pat2
+# - the output of above two commands may be different
+#
+# ./pat2
+f ./pat2/c 1 0
+f ./pat2/abc 1 0
+f ./pat2/ababc 1 0
+f ./pat2/abababc 1 0
+f ./pat2/xababcx 1 0
+# unrelated
+f ./pat2/abxy 1 0
+# deep non-matching parent that hides a match inside
+f ./pat2/outer/inner/ababc 1 0
