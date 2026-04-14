@@ -45,20 +45,20 @@ struct summary
   unsigned long long blocks; ///< total number of blocks (512 byte blocks)
 };
 
-/// print strings used in the output
+// Output format strings for different entry types and errors.
 const char *print_formats[8] = {
-    "Name                                                        User:Group           Size      Blocks Type\n",
+    "Name                                                        User:Group           Size    Blocks Type\n",
     "----------------------------------------------------------------------------------------------------\n",
-    "%-54s  ERROR: %s\n", // Modified to include Name alignment
+    "%-54s  ERROR: %s\n",
     "%-54s  No such file or directory\n",
     "%-54s  %8.8s:%-8.8s  %10llu  %8llu    %c\n",
-    "Invalid pattern syntax",
-    "Out of memory",
+    "Invalid pattern syntax\n",
+    "Out of memory\n",
 };
 
-const char *pattern = NULL; // pattern for filtering entries
+const char *pattern = NULL;
 
-/// abort the program with EXIT_FAILURE and an optional error message
+// Aborts the program with an error message.
 void panic(const char *msg, const char *format)
 {
   if (msg)
@@ -71,10 +71,7 @@ void panic(const char *msg, const char *format)
   exit(EXIT_FAILURE);
 }
 
-// -------------------------------------------------------------------------
-// Custom Mini Regex Engine (AST + Backtracking DP)
-// -------------------------------------------------------------------------
-
+// Regex AST node types.
 typedef enum
 {
   N_CHAR,
@@ -84,19 +81,20 @@ typedef enum
   N_STAR
 } NodeType;
 
+// Regex AST node structure.
 typedef struct RegexNode
 {
   NodeType type;
   char ch;
   struct RegexNode *left;
   struct RegexNode *right;
-  int id; // For DP memoization
+  int id;
 } RegexNode;
 
 int node_id_counter = 0;
 const char *p_curr;
 
-/// Regex syntax validator
+// Validates regular expression syntax.
 int validate_pattern(const char *p)
 {
   if (!p || !*p)
@@ -133,7 +131,7 @@ int validate_pattern(const char *p)
 
 RegexNode *parse_expr(void);
 
-/// Create new regex AST node
+// Allocates a new regex AST node.
 RegexNode *make_node(NodeType t, char c, RegexNode *l, RegexNode *r)
 {
   RegexNode *n = calloc(1, sizeof(RegexNode));
@@ -147,7 +145,7 @@ RegexNode *make_node(NodeType t, char c, RegexNode *l, RegexNode *r)
   return n;
 }
 
-/// Parse base character, wildcard, or group
+// Parses a character, wildcard, or group.
 RegexNode *parse_atom(void)
 {
   if (*p_curr == '(')
@@ -170,7 +168,7 @@ RegexNode *parse_atom(void)
   }
 }
 
-/// Parse repetition (Kleene star)
+// Parses a repetition operator.
 RegexNode *parse_factor(void)
 {
   RegexNode *n = parse_atom();
@@ -182,7 +180,7 @@ RegexNode *parse_factor(void)
   return n;
 }
 
-/// Parse concatenation
+// Parses a sequence of regex factors.
 RegexNode *parse_term(void)
 {
   RegexNode *n = parse_factor();
@@ -194,7 +192,7 @@ RegexNode *parse_term(void)
   return n;
 }
 
-/// Parse alternation (OR)
+// Parses a regex choice (alternation).
 RegexNode *parse_expr(void)
 {
   RegexNode *n = parse_term();
@@ -207,7 +205,7 @@ RegexNode *parse_expr(void)
   return n;
 }
 
-/// Compile pattern into AST
+// Compiles a pattern string into an AST.
 RegexNode *compile_regex(const char *pat)
 {
   if (!validate_pattern(pat))
@@ -219,7 +217,7 @@ RegexNode *compile_regex(const char *pat)
   return root;
 }
 
-/// Free AST memory recursively
+// Recursively cleans up regex AST memory.
 void free_regex(RegexNode *n)
 {
   if (!n)
@@ -229,7 +227,7 @@ void free_regex(RegexNode *n)
   free(n);
 }
 
-/// DP Matching Engine logic with backtracking and memoization
+// Matches a string against a regex AST using DP.
 int memo_match(RegexNode *n, const char *s, int i, int j, int8_t *memo, int num_nodes, int len)
 {
   int idx = n->id * ((len + 1) * (len + 1)) + i * (len + 1) + j;
@@ -278,7 +276,7 @@ int memo_match(RegexNode *n, const char *s, int i, int j, int8_t *memo, int num_
   return memo[idx] = res;
 }
 
-/// Entry for pattern matching using AST. Checks substring matching.
+// Checks if a string contains a regex match.
 int check_match(RegexNode *root, const char *s)
 {
   if (!root)
@@ -302,10 +300,7 @@ int check_match(RegexNode *root, const char *s)
   return matched;
 }
 
-// -------------------------------------------------------------------------
-// Directory Tree Traversal Logic
-// -------------------------------------------------------------------------
-
+// Directory tree node structure.
 RegexNode *regex_root = NULL;
 
 typedef struct TreeNode
@@ -316,7 +311,8 @@ typedef struct TreeNode
   int is_symlink;
   int is_fifo;
   int is_socket;
-  int has_error;
+  int lstat_error;
+  int opendir_error;
   char *error_msg;
 
   struct TreeNode **children;
@@ -327,7 +323,7 @@ typedef struct TreeNode
   int is_placeholder;
 } TreeNode;
 
-/// read next directory entry from open directory 'dir'. Ignores '.' and '..'
+// Returns the next valid directory entry.
 struct dirent *get_next(DIR *dir)
 {
   struct dirent *next;
@@ -343,7 +339,7 @@ struct dirent *get_next(DIR *dir)
   return next;
 }
 
-/// qsort comparator to sort directory entries (Directories first, Alphabetical)
+// Sorts entries by type and name.
 static int dirent_compare(const void *a, const void *b)
 {
   TreeNode *n1 = *(TreeNode **)a;
@@ -353,14 +349,14 @@ static int dirent_compare(const void *a, const void *b)
   return strcmp(n1->name, n2->name);
 }
 
-/// Get basename from path string
+// Returns the final component of a path.
 const char *get_basename(const char *path)
 {
   const char *base = strrchr(path, '/');
   return base ? base + 1 : path;
 }
 
-/// Free node memory
+// Recursively cleans up directory tree memory.
 void free_tree(TreeNode *n)
 {
   if (!n)
@@ -374,7 +370,7 @@ void free_tree(TreeNode *n)
   free(n);
 }
 
-/// Recursively build filtered in-memory directory tree
+// Constructs a filtered directory tree.
 TreeNode *build_tree(const char *path, const char *name, int depth)
 {
   TreeNode *node = calloc(1, sizeof(TreeNode));
@@ -382,7 +378,7 @@ TreeNode *build_tree(const char *path, const char *name, int depth)
 
   if (lstat(path, &node->st) < 0)
   {
-    node->has_error = 1;
+    node->lstat_error = 1;
     node->error_msg = strdup(strerror(errno));
     node->matches = (regex_root == NULL) || check_match(regex_root, name);
     node->subtree_matches = node->matches;
@@ -402,7 +398,7 @@ TreeNode *build_tree(const char *path, const char *name, int depth)
     DIR *dir = opendir(path);
     if (!dir)
     {
-      node->has_error = 1;
+      node->opendir_error = 1;
       node->error_msg = strdup(strerror(errno));
     }
     else
@@ -462,7 +458,7 @@ TreeNode *build_tree(const char *path, const char *name, int depth)
   return node;
 }
 
-/// Traverse and print tree output while calculating stats
+// Displays the tree and calculates statistics.
 void print_tree(TreeNode *node, int depth, struct summary *stats)
 {
   if (!node)
@@ -482,60 +478,77 @@ void print_tree(TreeNode *node, int depth, struct summary *stats)
 
   if (node->is_placeholder)
   {
-    printf("%-54s\n", name_buf);
+    printf("%s\n", name_buf);
+  }
+  else if (node->lstat_error)
+  {
+    printf("%s\n", name_buf);
+    if (node->error_msg)
+    {
+      fflush(stdout);
+      fprintf(stderr, "%*sERROR: %s\n", indent + 2, "", node->error_msg);
+    }
+  }
+  else if (depth == 0)
+  {
+    printf("%s\n", name_buf);
+    if (node->opendir_error && node->error_msg)
+    {
+      fflush(stdout);
+      fprintf(stderr, "%*sERROR: %s\n", indent + 2, "", node->error_msg);
+    }
   }
   else
   {
-    if (node->has_error && node->error_msg)
-    {
-      printf(print_formats[2], name_buf, node->error_msg);
-    }
+    char user[32] = {0};
+    char group[32] = {0};
+    struct passwd *pw = getpwuid(node->st.st_uid);
+    if (pw)
+      strncpy(user, pw->pw_name, 8);
     else
+      snprintf(user, sizeof(user), "%d", node->st.st_uid);
+
+    struct group *gr = getgrgid(node->st.st_gid);
+    if (gr)
+      strncpy(group, gr->gr_name, 8);
+    else
+      snprintf(group, sizeof(group), "%d", node->st.st_gid);
+
+    char type_c = ' ';
+    if (node->is_dir)
+      type_c = 'd';
+    else if (node->is_symlink)
+      type_c = 'l';
+    else if (node->is_fifo)
+      type_c = 'f';
+    else if (node->is_socket)
+      type_c = 's';
+
+    printf(print_formats[4], name_buf, user, group,
+           (unsigned long long)node->st.st_size, (unsigned long long)node->st.st_blocks, type_c);
+
+    // Accumulate statistics ONLY for non-placeholder
+    if (depth > 0)
     {
-      char user[32] = {0};
-      char group[32] = {0};
-      struct passwd *pw = getpwuid(node->st.st_uid);
-      if (pw)
-        strncpy(user, pw->pw_name, 8);
-      else
-        snprintf(user, sizeof(user), "%d", node->st.st_uid);
-
-      struct group *gr = getgrgid(node->st.st_gid);
-      if (gr)
-        strncpy(group, gr->gr_name, 8);
-      else
-        snprintf(group, sizeof(group), "%d", node->st.st_gid);
-
-      char type_c = ' ';
       if (node->is_dir)
-        type_c = 'd';
+        stats->dirs++;
       else if (node->is_symlink)
-        type_c = 'l';
+        stats->links++;
       else if (node->is_fifo)
-        type_c = 'f';
+        stats->fifos++;
       else if (node->is_socket)
-        type_c = 's';
+        stats->socks++;
+      else
+        stats->files++;
 
-      printf(print_formats[4], name_buf, user, group,
-             (unsigned long long)node->st.st_size, (unsigned long long)node->st.st_blocks, type_c);
+      stats->size += node->st.st_size;
+      stats->blocks += node->st.st_blocks;
+    }
 
-      // Accumulate statistics ONLY for non-placeholder
-      if (depth > 0)
-      {
-        if (node->is_dir)
-          stats->dirs++;
-        else if (node->is_symlink)
-          stats->links++;
-        else if (node->is_fifo)
-          stats->fifos++;
-        else if (node->is_socket)
-          stats->socks++;
-        else
-          stats->files++;
-
-        stats->size += node->st.st_size;
-        stats->blocks += node->st.st_blocks;
-      }
+    if (node->opendir_error && node->error_msg)
+    {
+      fflush(stdout);
+      fprintf(stderr, "%*sERROR: %s\n", indent + 2, "", node->error_msg);
     }
   }
 
@@ -545,7 +558,7 @@ void print_tree(TreeNode *node, int depth, struct summary *stats)
   }
 }
 
-/// Format and print statistics summary for a directory
+// Displays a single directory summary line.
 void print_summary(struct summary *stats)
 {
   char buf[256];
@@ -558,10 +571,10 @@ void print_summary(struct summary *stats)
 
   if (strlen(buf) > 68)
     strcpy(buf + 65, "...");
-  printf("%-68s %14llu %9llu\n", buf, stats->size, stats->blocks);
+  printf("%-68s   %14llu %9llu\n", buf, stats->size, stats->blocks);
 }
 
-/// Print program syntax and an optional error message. Aborts program.
+// Prints usage help and exits.
 void syntax(const char *argv0, const char *error, ...)
 {
   if (error)
@@ -587,7 +600,7 @@ void syntax(const char *argv0, const char *error, ...)
   exit(EXIT_FAILURE);
 }
 
-/// recursively process directory @a dn and print its tree
+// Processes a single directory path.
 void process_dir(const char *dn, const char *pstr, struct summary *stats, unsigned int flags)
 {
   TreeNode *root = build_tree(dn, dn, 0);
@@ -598,7 +611,7 @@ void process_dir(const char *dn, const char *pstr, struct summary *stats, unsign
   }
 }
 
-/// program entry point
+// Application entry point and argument parser.
 int main(int argc, char *argv[])
 {
   const char CURDIR[] = ".";
@@ -656,6 +669,7 @@ int main(int argc, char *argv[])
 
   for (int i = 0; i < ndir; i++)
   {
+
     struct summary dstat = {0};
 
     printf("%s", print_formats[0]);
@@ -665,6 +679,7 @@ int main(int argc, char *argv[])
 
     printf("%s", print_formats[1]);
     print_summary(&dstat);
+    printf("\n");
 
     tstat.dirs += dstat.dirs;
     tstat.files += dstat.files;
@@ -677,7 +692,7 @@ int main(int argc, char *argv[])
 
   if (ndir > 1)
   {
-    printf("\nAnalyzed %d directories:\n"
+    printf("Analyzed %d directories:\n"
            "  total # of files:        %16d\n"
            "  total # of directories:  %16d\n"
            "  total # of links:        %16d\n"
