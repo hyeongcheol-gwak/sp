@@ -310,32 +310,51 @@ int fork_exec(DynArray_T oTokens, int is_background) {
 	char *args[MAX_ARGS_CNT];
 	int jobid;
 	pid_t pids[1];
+	int sync_pipe[2];
 
 	/* Block SIGCHLD to avoid race condition */
 	block_signal(SIGCHLD, TRUE);
+
+	if (pipe(sync_pipe) < 0) {
+		error_print("pipe for sync failed", PERROR);
+		block_signal(SIGCHLD, FALSE);
+		return -1;
+	}
 
 	pid = fork();
 	if (pid < 0) {
 		error_print(NULL, PERROR);
 		block_signal(SIGCHLD, FALSE);
+		close(sync_pipe[0]);
+		close(sync_pipe[1]);
 		return -1;
 	}
 
 	if (pid == 0) {
 		/* Child process */
+		close(sync_pipe[1]); /* Close write end */
+
 		/* Set own process group */
 		setpgid(0, 0);
 
 		setup_child_signals();
 
-		/* Build and exec the command */
+		/* Build the command */
 		build_command(oTokens, args);
+
+		/* Wait for parent to add job */
+		char dummy;
+		if (read(sync_pipe[0], &dummy, 1) < 0) {}
+		close(sync_pipe[0]);
+
 		execvp(args[0], args);
 		error_print(args[0], PERROR);
 		_exit(127);
 	}
 
 	/* Parent process */
+	close(sync_pipe[0]); /* Close read end */
+
 	setpgid(pid, pid); /* Also set in parent to avoid race */
 	
 	pids[0] = pid;
@@ -344,8 +363,12 @@ int fork_exec(DynArray_T oTokens, int is_background) {
 	if (jobid < 0) {
 		fprintf(stderr, "[Error] Failed to add job\n");
 		block_signal(SIGCHLD, FALSE);
+		close(sync_pipe[1]);
 		return -1;
 	}
+
+	/* Signal child to proceed */
+	close(sync_pipe[1]);
 
 	block_signal(SIGCHLD, FALSE);
 
@@ -368,15 +391,24 @@ int iter_pipe_fork_exec(int n_pipe, DynArray_T oTokens, int is_background) {
 	int cmd_idx, i;
 	int jobid;
 	int len = dynarray_get_length(oTokens);
+	int sync_pipe[2];
 
 	/* Block SIGCHLD to avoid race */
 	block_signal(SIGCHLD, TRUE);
+
+	if (pipe(sync_pipe) < 0) {
+		error_print("pipe for sync failed", PERROR);
+		block_signal(SIGCHLD, FALSE);
+		return -1;
+	}
 
 	/* Create all pipes */
 	for (i = 0; i < n_pipe; i++) {
 		if (pipe(pipefds[i]) < 0) {
 			error_print(NULL, PERROR);
 			block_signal(SIGCHLD, FALSE);
+			close(sync_pipe[0]);
+			close(sync_pipe[1]);
 			return -1;
 		}
 	}
@@ -403,11 +435,14 @@ int iter_pipe_fork_exec(int n_pipe, DynArray_T oTokens, int is_background) {
 		if (pid < 0) {
 			error_print(NULL, PERROR);
 			block_signal(SIGCHLD, FALSE);
+			close(sync_pipe[0]);
+			close(sync_pipe[1]);
 			return -1;
 		}
 
 		if (pid == 0) {
 			/* Child process */
+			close(sync_pipe[1]); /* Close write end */
 			if (cmd_idx == 0) {
 				setpgid(0, 0);
 			} else {
@@ -445,8 +480,14 @@ int iter_pipe_fork_exec(int n_pipe, DynArray_T oTokens, int is_background) {
 				_exit(0);
 			}
 
-			/* Build and exec */
+			/* Build command */
 			build_command_partial(oTokens, cmd_start, cmd_end, args);
+
+			/* Wait for parent to add job */
+			char dummy;
+			if (read(sync_pipe[0], &dummy, 1) < 0) {}
+			close(sync_pipe[0]);
+
 			execvp(args[0], args);
 			error_print(args[0], PERROR);
 			_exit(127);
@@ -469,14 +510,20 @@ int iter_pipe_fork_exec(int n_pipe, DynArray_T oTokens, int is_background) {
 		close(pipefds[i][1]);
 	}
 
+	close(sync_pipe[0]); /* Close read end */
+
 	/* Add job */
 	jobid = add_job(pgid, pids, n_cmds, 
 	                is_background ? BACKGROUND : FOREGROUND);
 	if (jobid < 0) {
 		fprintf(stderr, "[Error] Failed to add job\n");
 		block_signal(SIGCHLD, FALSE);
+		close(sync_pipe[1]);
 		return -1;
 	}
+
+	/* Signal all children to proceed */
+	close(sync_pipe[1]);
 
 	block_signal(SIGCHLD, FALSE);
 
