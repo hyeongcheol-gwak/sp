@@ -13,6 +13,7 @@
 #include <assert.h>
 
 #define MAX_JOBS 16
+#define MAX_PROCS_PER_JOB 64
 
 typedef enum State {
     UNKNOWN = 0,
@@ -30,7 +31,10 @@ struct job {
     int job_id;
     pid_t pgid;
     int remaining_processes;
-    /* TODO: Add any necessary fields to the job */
+    int total_processes;
+    pid_t pids[MAX_PROCS_PER_JOB];
+    job_state state;
+    int bg_done;  /* flag: all bg processes finished */
 };
 
 /* 
@@ -41,16 +45,14 @@ struct job {
 struct job_manager {
     int n_jobs;
     struct job *jobs;
-    /* TODO: Add any necessary fields to the job manager */
+    int next_jid;
 };
 
 void init_job_manager();
 struct job *find_job_by_jid(int job_id);
 int remove_pid_from_job(struct job *job, pid_t pid);
 int delete_job(int job_id);
-
-/*
- * TODO: Implement any necessary job-control code in job.h 
- */
+int add_job(pid_t pgid, pid_t *pids, int n_procs, job_state state);
+struct job *find_fg_job();
 
 #endif /* _JOB_H_ */

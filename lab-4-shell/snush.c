@@ -12,24 +12,39 @@ volatile sig_atomic_t sigint_flag = 0;
 
 /*--------------------------------------------------------------------*/
 void check_bg_status() {
-    /*
-     * TODO: Implement check_bg_status()
-     */
+    int i;
+    for (i = 0; i < manager->n_jobs; ) {
+        struct job *j = &manager->jobs[i];
+        if (j->state == BACKGROUND && j->bg_done) {
+            fprintf(stdout, 
+                "[%d] Process group: %d Done\n", j->job_id, j->pgid);
+            fflush(stdout);
+            delete_job(j->job_id);
+            /* After delete, don't increment i since jobs shifted */
+        }
+        else {
+            i++;
+        }
+    }
 }
 /*--------------------------------------------------------------------*/
 void terminate_jobs() {
-
-    /*
-     * TODO: Implement terminate_jobs()
-    */
+    int i;
+    for (i = 0; i < manager->n_jobs; i++) {
+        killpg(manager->jobs[i].pgid, SIGKILL);
+    }
+    /* Reap children */
+    while (waitpid(-1, NULL, WNOHANG) > 0);
 }
 /*--------------------------------------------------------------------*/
 void cleanup() {
     terminate_jobs();
-    /*
-     * TODO: Implement cleanup(), if necessary
-     */
-    free(manager);
+    if (manager) {
+        if (manager->jobs)
+            free(manager->jobs);
+        free(manager);
+        manager = NULL;
+    }
 }
 /*--------------------------------------------------------------------*/
 /* Do not modify this function */
