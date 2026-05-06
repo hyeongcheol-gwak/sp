@@ -241,8 +241,8 @@ void wait_fg(int jobid) {
         return;
     }
 
-    while (1) {
-        pid = waitpid(-job->pgid, &status, 0);
+    while (job->remaining_processes > 0) {
+        pid = waitpid(-job->pgid, &status, WUNTRACED);
 
         if (pid > 0) {
 			// Remove the finished process from the job's pid list
@@ -250,11 +250,8 @@ void wait_fg(int jobid) {
 				fprintf(stderr, "Pid %d not found in the job: %d list\n", 
 					pid, job->job_id);
 			}
-
-			if (job->remaining_processes == 0) break;
+			continue;
         }
-
-        if (pid == 0) continue;
 
 		if (pid < 0) {
 			if (errno == EINTR) {
@@ -265,10 +262,15 @@ void wait_fg(int jobid) {
 					fprintf(stdout, "\n");
 					fflush(stdout);
 				}
+				/* Reap any already-terminated children */
+				while ((pid = waitpid(-job->pgid, &status, WNOHANG)) > 0) {
+					remove_pid_from_job(job, pid);
+				}
 				continue;
 			}
 			if (errno == ECHILD) break;
 			error_print("Unknown error waitpid() in wait_fg()", PERROR);
+			break;
 		}
     }
 
