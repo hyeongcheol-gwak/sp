@@ -1,0 +1,175 @@
+Name: 곽형철
+Student ID: 2021-18888
+
+------------------------------------------------------------------------
+Description:
+------------------------------------------------------------------------
+This project implements "snush", a minimal but realistic interactive
+Unix shell supporting process execution, I/O redirection, pipelines,
+signal handling, and background job control.
+
+------------------------------------------------------------------------
+Implemented Features:
+------------------------------------------------------------------------
+
+1. Interactive Operation
+   - Prints "% " prompt and reads user input in a loop.
+   - Performs lexical analysis, syntax checking, and command execution.
+   - Terminates gracefully on Ctrl-d (EOF) or the "exit" built-in.
+
+2. Built-in Commands
+   - cd [dir] : Changes the working directory to dir, or to HOME if
+     dir is omitted. Executed in the parent process (no fork) so that
+     the directory change takes effect in the shell itself.
+   - exit : Terminates the shell with exit status 0. Also executed in
+     the parent process without forking.
+   - When a built-in appears inside a pipeline (e.g., "cd /tmp | ls"),
+     it runs in a forked child without execvp, so its side effects do
+     not propagate to the parent shell.
+
+3. Process Execution (fork_exec)
+   - Forks a child process, sets its own process group (setpgid),
+     restores default signal dispositions in the child, builds the
+     argument array, and calls execvp.
+   - Uses a pipe-based synchronization (sync_pipe) to ensure the
+     parent registers the job in the job manager before the child
+     calls execvp. The child blocks on read(sync_pipe) until the
+     parent closes the write end after add_job().
+
+4. Pipelines (iter_pipe_fork_exec)
+   - Supports multi-stage pipelines (e.g., "cmd1 | cmd2 | cmd3").
+   - All processes in a pipeline share the same process group ID (PGID),
+     set to the PID of the first child.
+   - Pipe file descriptors are properly duplicated and closed in both
+     parent and child processes.
+   - A single sync_pipe ensures all children wait until the parent
+     has registered the entire pipeline as one job before executing.
+
+5. I/O Redirection
+   - Input redirection (<) : Opens the specified file as read-only and
+     redirects STDIN_FILENO via dup2. Prints an error if the file does
+     not exist.
+   - Output redirection (>) : Opens/creates the specified file with
+     O_WRONLY | O_CREAT | O_TRUNC and redirects STDOUT_FILENO via dup2.
+     Creates the file if it does not exist; truncates if it does.
+   - Multiple redirections of the same type are detected and rejected
+     during syntax analysis.
+
+6. Signal Handling
+   - SIGINT (Ctrl-C) : The shell's sigint_handler sets a volatile
+     sig_atomic_t flag. handle_sigint() checks this flag and sends
+     SIGINT to the foreground job's entire process group via killpg.
+     The shell itself does not terminate.
+   - SIGCHLD : The shell's sigchld_handler sets a flag. handle_sigchld()
+     reaps terminated children with waitpid(WNOHANG) and decrements
+     remaining_processes in the corresponding job. For background jobs,
+     when all processes finish, bg_done is set to 1.
+   - SIGQUIT, SIGTSTP, SIGTTOU, SIGTTIN are all set to SIG_IGN in the
+     parent shell.
+   - Child processes restore all signals to SIG_DFL via
+     setup_child_signals() before calling execvp.
+   - Signal handlers only set flags (no printf inside handlers) to
+     maintain async-signal-safety.
+
+7. Race Condition Prevention
+   - SIGCHLD is blocked (sigprocmask SIG_BLOCK) before fork() and
+     unblocked after the job is registered in the job manager. This
+     prevents the race where a child terminates before the parent
+     has added the job.
+   - setpgid() is called in both parent and child to avoid a race
+     between the two.
+   - A pipe-based rendezvous mechanism guarantees the child does not
+     call execvp until the parent has completed add_job().
+
+8. [Extra Credit] Background Process Execution (&)
+   - Commands ending with '&' run in the background.
+   - Background jobs are registered in the job manager with state
+     BACKGROUND and announced via print_job().
+   - SIGCHLD handler asynchronously reaps background processes and
+     marks completed jobs (bg_done = 1).
+   - check_bg_status() is called at the top of the main loop to
+     print completion messages ("Done") and remove finished background
+     jobs from the job manager.
+   - Foreground wait (wait_fg) is skipped for background jobs.
+
+------------------------------------------------------------------------
+Design Decisions:
+------------------------------------------------------------------------
+- Job IDs are assigned as monotonically increasing unique integers
+  (max(existing JIDs) + 1), starting from 1, matching sample_snush.
+- The job manager uses a fixed-capacity array (MAX_JOBS = 16) with
+  shifting on deletion to keep jobs contiguous.
+- Each job tracks up to MAX_PROCS_PER_JOB (64) PIDs.
+- wait_fg() uses waitpid(-pgid, ...) to wait specifically for
+  processes in the foreground job's process group, properly handling
+  EINTR from signals.
+
+------------------------------------------------------------------------
+File Structure:
+------------------------------------------------------------------------
+- snush.c    : Main shell loop, signal initialization, cleanup
+- execute.c  : Process execution, pipe/redirection, signal handling,
+               fork_exec, iter_pipe_fork_exec, wait_fg
+- execute.h  : Header for execute module
+- job.c      : Job manager implementation (add, find, remove, delete)
+- job.h      : Job data structures and API declarations
+- lexsyn.c   : Lexical analyzer and syntax checker
+- lexsyn.h   : Header for lexsyn module
+- token.c    : Token creation and management
+- token.h    : Token type definitions
+- dynarray.c : Dynamic array ADT implementation
+- dynarray.h : Dynamic array ADT interface
+- util.c     : Utility functions (error printing, etc.)
+- util.h     : Header for util module
+- Makefile   : Build rules using gcc800
+
+------------------------------------------------------------------------
+Known Bugs:
+------------------------------------------------------------------------
+None known. All features have been tested against sample_snush and
+produce matching output for the provided test cases.
+
+------------------------------------------------------------------------
+Testing:
+------------------------------------------------------------------------
+Tested with the cases in snush_sample_test_cases.md, including:
+- Simple commands: ls, echo, /bin/echo
+- Built-in commands: cd, exit, cd with no argument
+- Pipelines: ls | cat, ls | head -3, cat < input | grep pattern
+- I/O redirection: cat < input.txt, echo hello > out.txt
+- Background execution: sleep 3 &, sleep 2 & followed by ls
+- Signal handling: Ctrl-C during foreground processes
+- Error cases: invalid commands, multiple redirections, syntax errors
+
+------------------------------------------------------------------------
+AI Tools Used:
+------------------------------------------------------------------------
+Used AI coding assistant (Gemini) for the following purposes:
+
+1. Debugging Race Conditions
+   - Identified a non-deterministic bug where child processes could
+     call execvp before the parent registered the job in the job
+     manager. AI suggested implementing a pipe-based rendezvous
+     (sync_pipe) mechanism to synchronize parent and child.
+
+2. Signal Handling Design
+   - Received guidance on async-signal-safe practices: using
+     volatile sig_atomic_t flags in signal handlers instead of
+     calling printf directly, and deferring actual processing to
+     handle_sigchld() and handle_sigint() in the main loop.
+   - Advice on blocking SIGCHLD around critical sections (fork
+     through add_job) to prevent race conditions.
+
+3. Background Job Management
+   - AI assisted in designing the bg_done flag approach and the
+     check_bg_status() polling mechanism in the main loop for
+     printing background job completion messages.
+
+4. Code Review and Debugging
+   - AI helped review the overall implementation for correctness,
+     including verifying proper file descriptor cleanup in pipeline
+     stages and ensuring setpgid() is called in both parent and
+     child to avoid PGID races.
+
+5. README Writing
+   - AI assisted in writing this detailed readme document.
