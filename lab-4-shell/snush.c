@@ -17,7 +17,7 @@ void check_bg_status() {
         struct job *j = &manager->jobs[i];
         if (j->state == BACKGROUND && j->bg_done) {
             fprintf(stdout, 
-                "[%d] Process group: %d Done\n", j->job_id, j->pgid);
+                "[%d] Process group: %d done\n", j->job_id, j->pgid);
             fflush(stdout);
             delete_job(j->job_id);
             /* After delete, don't increment i since jobs shifted */

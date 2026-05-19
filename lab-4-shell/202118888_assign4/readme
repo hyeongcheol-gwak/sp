@@ -18,7 +18,7 @@ Implemented Features:
    - Terminates gracefully on Ctrl-d (EOF) or the "exit" built-in.
 
 2. Built-in Commands
-   - cd [dir] : Changes the working directory to dir, or to $HOME if
+   - cd [dir] : Changes the working directory to dir, or to HOME if
      dir is omitted. Executed in the parent process (no fork) so that
      the directory change takes effect in the shell itself.
    - exit : Terminates the shell with exit status 0. Also executed in

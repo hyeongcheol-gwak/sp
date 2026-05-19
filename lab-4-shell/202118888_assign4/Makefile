@@ -23,4 +23,3 @@ clean :
 			$(MAKE) -C $$d clean; \
 		fi; \
 	done
-	@echo ""
